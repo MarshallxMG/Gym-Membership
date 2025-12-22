@@ -364,29 +364,46 @@
 
             <form id="registerForm" class="form">
                 <div id="registerAlert"></div>
-                <div class="form-group">
-                    <label>Full Name</label>
-                    <input type="text" id="registerName" placeholder="Your Name" required>
-                </div>
-                <div class="form-group">
-                    <label>Email Address</label>
-                    <input type="email" id="registerEmail" placeholder="you@example.com" required>
-                </div>
-                <div class="form-group">
-                    <label>Phone Number</label>
-                    <div class="phone-row">
-                        <input type="text" class="phone-prefix" value="+91" readonly>
-                        <input type="tel" id="registerPhone" placeholder="9876543210" pattern="[0-9]{10}">
+                
+                <!-- Step 1: Registration Details -->
+                <div id="regStep1" class="step active">
+                    <div class="form-group">
+                        <label>Full Name</label>
+                        <input type="text" id="registerName" placeholder="Your Name" required>
                     </div>
-                </div>
-                <div class="form-group">
-                    <label>Password</label>
-                    <div class="password-wrapper">
-                        <input type="password" id="registerPassword" placeholder="••••••••" required minlength="6">
-                        <button type="button" class="toggle-password" onclick="togglePassword('registerPassword', this)">👁️</button>
+                    <div class="form-group">
+                        <label>Email Address</label>
+                        <input type="email" id="registerEmail" placeholder="you@example.com" required>
                     </div>
+                    <div class="form-group">
+                        <label>Phone Number</label>
+                        <div class="phone-row">
+                            <input type="text" class="phone-prefix" value="+91" readonly>
+                            <input type="tel" id="registerPhone" placeholder="9876543210" pattern="[0-9]{10}">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <div class="password-wrapper">
+                            <input type="password" id="registerPassword" placeholder="••••••••" required minlength="6">
+                            <button type="button" class="toggle-password" onclick="togglePassword('registerPassword', this)">👁️</button>
+                        </div>
+                    </div>
+                    <button type="button" class="btn" id="sendRegOtpBtn" onclick="sendRegistrationOTP()">Send OTP</button>
                 </div>
-                <button type="submit" class="btn" id="registerBtn">Create Account</button>
+
+                <!-- Step 2: OTP Verification -->
+                <div id="regStep2" class="step">
+                    <p style="color: rgba(255,255,255,0.7); font-size: 0.9rem; margin-bottom: 1rem; text-align: center;">
+                        Enter the 6-digit OTP sent to your email
+                    </p>
+                    <div class="form-group">
+                        <label>OTP Code</label>
+                        <input type="text" id="registerOtp" class="otp-input" placeholder="000000" maxlength="6">
+                    </div>
+                    <button type="button" class="btn" id="verifyRegOtpBtn" onclick="verifyRegistrationOTP()">Verify & Create Account</button>
+                    <button type="button" class="btn btn-secondary" style="margin-top: 0.5rem;" onclick="goToRegStep(1)">← Back</button>
+                </div>
             </form>
         </div>
     </div>
@@ -635,47 +652,115 @@
             }
         });
 
-        // Register
-        document.getElementById('registerForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const btn = document.getElementById('registerBtn');
+        // Registration Variables
+        let pendingEmail = '';
+
+        function goToRegStep(step) {
+            document.querySelectorAll('#registerForm .step').forEach(s => s.classList.remove('active'));
+            document.getElementById('regStep' + step).classList.add('active');
+        }
+
+        // Step 1: Send Registration OTP
+        async function sendRegistrationOTP() {
+            const name = document.getElementById('registerName').value;
+            const email = document.getElementById('registerEmail').value;
+            const phone = document.getElementById('registerPhone').value;
+            const password = document.getElementById('registerPassword').value;
+            const btn = document.getElementById('sendRegOtpBtn');
             const alert = document.getElementById('registerAlert');
-            
+
+            if (!name || !email || !password) {
+                alert.className = 'alert alert-error';
+                alert.innerHTML = '✗ Please fill in all required fields';
+                return;
+            }
+
+            if (password.length < 6) {
+                alert.className = 'alert alert-error';
+                alert.innerHTML = '✗ Password must be at least 6 characters';
+                return;
+            }
+
             btn.disabled = true;
             btn.innerHTML = '<span class="spinner"></span>';
             alert.className = 'alert';
+            alert.innerHTML = '';
 
             try {
-                const res = await fetch('/api/auth/register', {
+                const res = await fetch('/api/auth/register/send-otp', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        name: document.getElementById('registerName').value,
-                        email: document.getElementById('registerEmail').value,
-                        phone: document.getElementById('registerPhone').value,
-                        password: document.getElementById('registerPassword').value
-                    })
+                    body: JSON.stringify({ name, email, phone, password })
                 });
 
                 const data = await res.json();
 
-                if (res.ok && data.success) {
-                    localStorage.setItem('userToken', data.token);
-                    localStorage.setItem('userData', JSON.stringify(data.user));
+                if (data.success) {
+                    pendingEmail = email;
                     alert.className = 'alert alert-success';
-                    alert.innerHTML = '✓ Account created!';
-                    setTimeout(() => window.location.href = '/user/dashboard.html', 500);
+                    alert.innerHTML = '✓ ' + data.message;
+                    setTimeout(() => goToRegStep(2), 1000);
                 } else {
                     alert.className = 'alert alert-error';
                     alert.innerHTML = '✗ ' + data.error;
                 }
             } catch (err) {
                 alert.className = 'alert alert-error';
-                alert.innerHTML = '✗ Connection error';
+                alert.innerHTML = '✗ Connection error. Please try again.';
             } finally {
                 btn.disabled = false;
-                btn.textContent = 'Create Account';
+                btn.textContent = 'Send OTP';
             }
+        }
+
+        // Step 2: Verify OTP and Complete Registration
+        async function verifyRegistrationOTP() {
+            const otp = document.getElementById('registerOtp').value;
+            const btn = document.getElementById('verifyRegOtpBtn');
+            const alert = document.getElementById('registerAlert');
+
+            if (!otp || otp.length !== 6) {
+                alert.className = 'alert alert-error';
+                alert.innerHTML = '✗ Please enter the 6-digit OTP';
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span>';
+            alert.className = 'alert';
+            alert.innerHTML = '';
+
+            try {
+                const res = await fetch('/api/auth/register/verify-otp', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: pendingEmail, otp })
+                });
+
+                const data = await res.json();
+
+                if (data.success) {
+                    localStorage.setItem('userToken', data.token);
+                    localStorage.setItem('userData', JSON.stringify(data.user));
+                    alert.className = 'alert alert-success';
+                    alert.innerHTML = '✓ ' + data.message;
+                    setTimeout(() => window.location.href = '/user/dashboard.html', 1000);
+                } else {
+                    alert.className = 'alert alert-error';
+                    alert.innerHTML = '✗ ' + data.error;
+                }
+            } catch (err) {
+                alert.className = 'alert alert-error';
+                alert.innerHTML = '✗ Connection error. Please try again.';
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Verify & Create Account';
+            }
+        }
+
+        // Prevent form submit (we use onclick handlers instead)
+        document.getElementById('registerForm').addEventListener('submit', (e) => {
+            e.preventDefault();
         });
     </script>
 </body>

@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const { getDatabase } = require('../database/db');
 const { generateToken } = require('../middleware/auth');
+const { sendRegistrationOTPEmail } = require('../services/emailService');
 
 const router = express.Router();
 
@@ -179,7 +180,144 @@ router.post('/user/login', async (req, res) => {
     }
 });
 
-// User Registration
+// Store pending registrations (temporary storage for OTP verification)
+const pendingRegistrations = new Map();
+
+// Generate 6-digit OTP for registration
+function generateRegOTP() {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+// Step 1: Start Registration - Send OTP to email
+router.post('/register/send-otp', async (req, res) => {
+    try {
+        const { name, email, phone, password } = req.body;
+
+        if (!name || !email || !password) {
+            return res.status(400).json({ error: 'Name, email, and password are required' });
+        }
+
+        if (password.length < 6) {
+            return res.status(400).json({ error: 'Password must be at least 6 characters' });
+        }
+
+        const db = getDatabase();
+
+        // Check if email exists
+        const existingUser = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+        const existingAdmin = db.prepare('SELECT id FROM admins WHERE email = ?').get(email);
+        
+        if (existingUser || existingAdmin) {
+            return res.status(409).json({ error: 'Email already registered' });
+        }
+
+        // Generate OTP
+        const otp = generateRegOTP();
+        
+        // Store pending registration with 10 min expiry
+        pendingRegistrations.set(email, {
+            name,
+            email,
+            phone,
+            password,
+            otp,
+            expiresAt: Date.now() + 10 * 60 * 1000 // 10 minutes
+        });
+
+        // Send OTP email
+        const emailSent = await sendRegistrationOTPEmail(email, name, otp);
+        
+        if (emailSent) {
+            console.log(`📧 Registration OTP sent to ${email}: ${otp}`);
+            res.json({ 
+                success: true, 
+                message: 'OTP sent to your email. Please verify to complete registration.' 
+            });
+        } else {
+            res.status(500).json({ error: 'Failed to send OTP email. Please try again.' });
+        }
+    } catch (error) {
+        console.error('Registration OTP error:', error);
+        res.status(500).json({ error: 'Failed to send OTP' });
+    }
+});
+
+// Step 2: Verify OTP and Complete Registration
+router.post('/register/verify-otp', async (req, res) => {
+    try {
+        const { email, otp } = req.body;
+
+        if (!email || !otp) {
+            return res.status(400).json({ error: 'Email and OTP are required' });
+        }
+
+        // Get pending registration
+        const pending = pendingRegistrations.get(email);
+        
+        if (!pending) {
+            return res.status(400).json({ error: 'No pending registration found. Please register again.' });
+        }
+
+        // Check if OTP expired
+        if (Date.now() > pending.expiresAt) {
+            pendingRegistrations.delete(email);
+            return res.status(400).json({ error: 'OTP expired. Please register again.' });
+        }
+
+        // Verify OTP
+        if (pending.otp !== otp) {
+            return res.status(400).json({ error: 'Invalid OTP. Please try again.' });
+        }
+
+        // OTP verified - create user account
+        const db = getDatabase();
+        
+        // Format phone
+        let formattedPhone = pending.phone;
+        if (pending.phone && !pending.phone.startsWith('+')) {
+            formattedPhone = '+91' + pending.phone.replace(/^0+/, '');
+        }
+
+        // Hash password and create user
+        const hashedPassword = await bcrypt.hash(pending.password, 10);
+        const result = db.prepare(`
+            INSERT INTO users (name, email, phone, password_hash) 
+            VALUES (?, ?, ?, ?)
+        `).run(pending.name, pending.email, formattedPhone || null, hashedPassword);
+
+        // Clear pending registration
+        pendingRegistrations.delete(email);
+
+        // Generate token
+        const token = generateToken({
+            id: result.lastInsertRowid,
+            email: pending.email,
+            name: pending.name,
+            role: 'user'
+        });
+
+        console.log(`✅ User registered: ${pending.name} (${pending.email})`);
+
+        res.status(201).json({
+            success: true,
+            message: 'Email verified! Registration successful.',
+            token,
+            role: 'user',
+            user: {
+                id: result.lastInsertRowid,
+                name: pending.name,
+                email: pending.email,
+                phone: formattedPhone || null,
+                role: 'user'
+            }
+        });
+    } catch (error) {
+        console.error('Registration verification error:', error);
+        res.status(500).json({ error: 'Registration failed' });
+    }
+});
+
+// Legacy User Registration (kept for backward compatibility - no OTP)
 router.post('/register', async (req, res) => {
     try {
         const { name, email, phone, password } = req.body;

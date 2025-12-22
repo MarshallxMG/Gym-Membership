@@ -179,4 +179,63 @@ async function sendExpiredEmail(userEmail, userName, membership) {
     }
 }
 
-module.exports = { sendExpiryEmail, sendAdminNotificationEmail, sendExpiredEmail, getTransporter };
+// Send registration OTP email
+async function sendRegistrationOTPEmail(email, name, otp) {
+    const emailTransporter = getTransporter();
+    
+    if (!emailTransporter) {
+        console.log('⚠️ Email not configured - skipping OTP email');
+        return false;
+    }
+
+    const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+    <head><meta charset="UTF-8"></head>
+    <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Arial, sans-serif; background-color: #f5f5f5;">
+        <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+            <div style="background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%); padding: 30px; border-radius: 16px 16px 0 0; text-align: center;">
+                <h1 style="color: white; margin: 0; font-size: 28px;">🏋️ GymPro</h1>
+                <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0;">Email Verification</p>
+            </div>
+            
+            <div style="background: white; padding: 30px; border-radius: 0 0 16px 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
+                <h2 style="color: #333; margin-top: 0;">Welcome ${name}! 👋</h2>
+                
+                <p style="color: #555; font-size: 16px; line-height: 1.6;">
+                    Thank you for registering with GymPro! Please use the following OTP to verify your email address:
+                </p>
+                
+                <div style="background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%); padding: 20px; border-radius: 12px; margin: 20px 0; text-align: center;">
+                    <span style="font-size: 36px; font-weight: bold; color: white; letter-spacing: 8px;">${otp}</span>
+                </div>
+                
+                <p style="color: #888; font-size: 14px;">
+                    This OTP is valid for <strong>10 minutes</strong>. Don't share it with anyone.
+                </p>
+            </div>
+            
+            <p style="text-align: center; color: #999; font-size: 12px; margin-top: 20px;">
+                If you didn't request this, please ignore this email.
+            </p>
+        </div>
+    </body>
+    </html>
+    `;
+
+    try {
+        await emailTransporter.sendMail({
+            from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+            to: email,
+            subject: '🔐 GymPro - Verify Your Email',
+            html: htmlContent
+        });
+        console.log(`📧 Registration OTP sent to ${email}`);
+        return true;
+    } catch (error) {
+        console.error(`❌ Failed to send registration OTP to ${email}:`, error.message);
+        return false;
+    }
+}
+
+module.exports = { sendExpiryEmail, sendAdminNotificationEmail, sendExpiredEmail, sendRegistrationOTPEmail, getTransporter };
