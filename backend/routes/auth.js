@@ -224,18 +224,16 @@ router.post('/register/send-otp', async (req, res) => {
             expiresAt: Date.now() + 10 * 60 * 1000 // 10 minutes
         });
 
-        // Send OTP email
-        const emailSent = await sendRegistrationOTPEmail(email, name, otp);
+        // Send OTP email in background (don't wait)
+        sendRegistrationOTPEmail(email, name, otp)
+            .then(() => console.log(`📧 Registration OTP sent to ${email}: ${otp}`))
+            .catch(err => console.error('Email send error:', err));
         
-        if (emailSent) {
-            console.log(`📧 Registration OTP sent to ${email}: ${otp}`);
-            res.json({ 
-                success: true, 
-                message: 'OTP sent to your email. Please verify to complete registration.' 
-            });
-        } else {
-            res.status(500).json({ error: 'Failed to send OTP email. Please try again.' });
-        }
+        // Respond immediately
+        res.json({ 
+            success: true, 
+            message: 'OTP sent to your email. Please check your inbox (and spam folder).' 
+        });
     } catch (error) {
         console.error('Registration OTP error:', error);
         res.status(500).json({ error: 'Failed to send OTP' });
@@ -476,14 +474,15 @@ router.post('/forgot-password', async (req, res) => {
             name: user.name
         });
 
-        // Send OTP email
-        await sendOTPEmail(email, otp, user.name);
+        // Send OTP email in background (don't wait)
+        sendOTPEmail(email, otp, user.name)
+            .then(() => console.log(`📧 Password reset OTP sent to ${email}`))
+            .catch(err => console.error('Email send error:', err));
         
-        console.log(`📧 OTP sent to ${email}`);
-        
+        // Respond immediately
         res.json({ 
             success: true, 
-            message: 'OTP sent to your email' 
+            message: 'OTP sent to your email. Check your inbox (and spam folder).' 
         });
     } catch (error) {
         console.error('Forgot password error:', error);
