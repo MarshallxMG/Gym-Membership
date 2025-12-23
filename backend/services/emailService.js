@@ -1,23 +1,20 @@
 const nodemailer = require('nodemailer');
 
-// Email transporter configuration
+// Email transporter configuration - Using SendGrid
 let transporter = null;
 
 function getTransporter() {
-    if (!transporter && process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+    if (!transporter && process.env.SENDGRID_API_KEY) {
         transporter = nodemailer.createTransport({
-            host: 'smtp.gmail.com',
-            port: 465,
-            secure: true, // Use SSL
+            host: 'smtp.sendgrid.net',
+            port: 587,
+            secure: false,
             auth: {
-                user: process.env.EMAIL_USER,
-                pass: process.env.EMAIL_PASS
-            },
-            connectionTimeout: 30000, // 30 seconds
-            greetingTimeout: 30000,
-            socketTimeout: 30000
+                user: 'apikey', // This is literally the string 'apikey'
+                pass: process.env.SENDGRID_API_KEY
+            }
         });
-        console.log('✅ Email service configured (SSL)');
+        console.log('✅ Email service configured (SendGrid)');
     }
     return transporter;
 }
