@@ -3,20 +3,19 @@ require('dotenv').config();
 const cron = require('node-cron');
 const { getDatabase } = require('../database/db');
 const { sendExpiryEmail, sendAdminNotificationEmail } = require('./emailService');
-const { sendExpiryWhatsApp } = require('./whatsappService');
 
 // Admin email for notifications
 const ADMIN_EMAIL = process.env.EMAIL_USER;
 
-// Check for expiring memberships and create notifications + send emails/WhatsApp
+// Check for expiring memberships and create notifications + send emails
 async function checkExpiringMemberships() {
     try {
         const db = getDatabase();
         const now = new Date();
         
-        // Get all active memberships with phone numbers
+        // Get all active memberships
         const activeMemberships = db.prepare(`
-            SELECT m.*, u.name as user_name, u.email as user_email, u.phone as user_phone
+            SELECT m.*, u.name as user_name, u.email as user_email
             FROM memberships m
             JOIN users u ON m.user_id = u.id
             WHERE m.status = 'active'
@@ -110,19 +109,9 @@ async function checkExpiringMemberships() {
                 false
             );
 
-            // Send WhatsApp to USER (if phone number exists and Twilio is configured)
-            if (membership.user_phone) {
-                await sendExpiryWhatsApp(
-                    membership.user_phone,
-                    membership.user_name,
-                    membership,
-                    isExpired ? 0 : daysRemaining
-                );
-            }
-
             notificationCount++;
             const status = isExpired ? '❌ EXPIRED' : `⏰ ${daysRemaining} day(s) left`;
-            console.log(`📧📱 ${membership.user_name}: ${status}`);
+            console.log(`📧 ${membership.user_name}: ${status}`);
         }
 
         return notificationCount;
@@ -143,7 +132,7 @@ function startNotificationScheduler() {
     
     console.log('🏭 PRODUCTION MODE');
     console.log('📋 Checking every hour');
-    console.log('📧📱 Reminders: Email + WhatsApp (5 days + 2 days before expiry)');
+    console.log('📧 Reminders: 5 days + 2 days before expiry');
 
     // Run immediately on server start
     console.log('🔍 Initial check...');
@@ -153,4 +142,3 @@ function startNotificationScheduler() {
 }
 
 module.exports = { checkExpiringMemberships, startNotificationScheduler };
-
