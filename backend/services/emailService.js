@@ -6,13 +6,18 @@ let transporter = null;
 function getTransporter() {
     if (!transporter && process.env.EMAIL_USER && process.env.EMAIL_PASS) {
         transporter = nodemailer.createTransport({
-            service: 'gmail',
+            host: 'smtp.gmail.com',
+            port: 465,
+            secure: true, // Use SSL
             auth: {
                 user: process.env.EMAIL_USER,
                 pass: process.env.EMAIL_PASS
-            }
+            },
+            connectionTimeout: 30000, // 30 seconds
+            greetingTimeout: 30000,
+            socketTimeout: 30000
         });
-        console.log('✅ Email service configured');
+        console.log('✅ Email service configured (SSL)');
     }
     return transporter;
 }
