@@ -7,14 +7,17 @@ function getTransporter() {
     if (!transporter && process.env.SENDGRID_API_KEY) {
         transporter = nodemailer.createTransport({
             host: 'smtp.sendgrid.net',
-            port: 587,
-            secure: false,
+            port: 465,
+            secure: true, // Use SSL
             auth: {
-                user: 'apikey', // This is literally the string 'apikey'
+                user: 'apikey',
                 pass: process.env.SENDGRID_API_KEY
-            }
+            },
+            connectionTimeout: 60000, // 60 seconds
+            greetingTimeout: 30000,
+            socketTimeout: 60000
         });
-        console.log('✅ Email service configured (SendGrid)');
+        console.log('✅ Email service configured (SendGrid SSL)');
     }
     return transporter;
 }

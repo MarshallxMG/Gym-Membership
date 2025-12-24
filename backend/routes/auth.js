@@ -393,12 +393,15 @@ async function sendOTPEmail(email, otp, name) {
     
     const transporter = nodemailer.createTransport({
         host: 'smtp.sendgrid.net',
-        port: 587,
-        secure: false,
+        port: 465,
+        secure: true,
         auth: {
             user: 'apikey',
             pass: process.env.SENDGRID_API_KEY
-        }
+        },
+        connectionTimeout: 60000,
+        greetingTimeout: 30000,
+        socketTimeout: 60000
     });
 
     const htmlContent = `
