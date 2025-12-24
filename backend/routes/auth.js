@@ -387,22 +387,16 @@ function generateOTP() {
     return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-// Send OTP email
+// Send OTP email using SendGrid Web API
 async function sendOTPEmail(email, otp, name) {
-    const nodemailer = require('nodemailer');
+    const sgMail = require('@sendgrid/mail');
     
-    const transporter = nodemailer.createTransport({
-        host: 'smtp.sendgrid.net',
-        port: 465,
-        secure: true,
-        auth: {
-            user: 'apikey',
-            pass: process.env.SENDGRID_API_KEY
-        },
-        connectionTimeout: 60000,
-        greetingTimeout: 30000,
-        socketTimeout: 60000
-    });
+    if (!process.env.SENDGRID_API_KEY) {
+        console.log('⚠️ SendGrid not configured - skipping OTP email');
+        return;
+    }
+    
+    sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
     const htmlContent = `
     <!DOCTYPE html>
@@ -441,9 +435,9 @@ async function sendOTPEmail(email, otp, name) {
     </html>
     `;
 
-    await transporter.sendMail({
-        from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+    await sgMail.send({
         to: email,
+        from: process.env.EMAIL_FROM || 'noreply@gympro.com',
         subject: '🔐 GymPro Password Reset OTP',
         html: htmlContent
     });

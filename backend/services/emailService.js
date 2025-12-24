@@ -1,32 +1,20 @@
-const nodemailer = require('nodemailer');
+const sgMail = require('@sendgrid/mail');
 
-// Email transporter configuration - Using SendGrid
-let transporter = null;
+// Email configuration - Using SendGrid Web API (HTTP - not blocked by Render)
+let emailConfigured = false;
 
-function getTransporter() {
-    if (!transporter && process.env.SENDGRID_API_KEY) {
-        transporter = nodemailer.createTransport({
-            host: 'smtp.sendgrid.net',
-            port: 465,
-            secure: true, // Use SSL
-            auth: {
-                user: 'apikey',
-                pass: process.env.SENDGRID_API_KEY
-            },
-            connectionTimeout: 60000, // 60 seconds
-            greetingTimeout: 30000,
-            socketTimeout: 60000
-        });
-        console.log('✅ Email service configured (SendGrid SSL)');
+function initializeEmail() {
+    if (!emailConfigured && process.env.SENDGRID_API_KEY) {
+        sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+        emailConfigured = true;
+        console.log('✅ Email service configured (SendGrid Web API)');
     }
-    return transporter;
+    return emailConfigured;
 }
 
 // Send membership expiry email to USER
 async function sendExpiryEmail(userEmail, userName, membership, timeRemaining, isTestMode = false) {
-    const emailTransporter = getTransporter();
-    
-    if (!emailTransporter) {
+    if (!initializeEmail()) {
         console.log('⚠️ Email not configured - skipping email to', userEmail);
         return false;
     }
@@ -84,9 +72,9 @@ async function sendExpiryEmail(userEmail, userName, membership, timeRemaining, i
     `;
 
     try {
-        await emailTransporter.sendMail({
-            from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+        await sgMail.send({
             to: userEmail,
+            from: process.env.EMAIL_FROM || 'noreply@gympro.com',
             subject: subject,
             html: htmlContent
         });
@@ -100,63 +88,52 @@ async function sendExpiryEmail(userEmail, userName, membership, timeRemaining, i
 
 // Send notification email to ADMIN about expiring membership
 async function sendAdminNotificationEmail(adminEmail, userName, userEmail, membership, timeRemaining, isTestMode = false) {
-    const emailTransporter = getTransporter();
-    
-    if (!emailTransporter) {
+    if (!initializeEmail()) {
         console.log('⚠️ Email not configured - skipping admin notification');
         return false;
     }
 
     const timeUnit = isTestMode ? 'minutes' : 'days';
-    const subject = `📋 Membership Expiring: ${userName} - ${timeRemaining} ${timeUnit} left`;
-
     const htmlContent = `
     <!DOCTYPE html>
     <html>
     <head><meta charset="UTF-8"></head>
     <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Arial, sans-serif; background-color: #f5f5f5;">
         <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
-            <div style="background: linear-gradient(135deg, #f87171 0%, #dc2626 100%); padding: 30px; border-radius: 16px 16px 0 0; text-align: center;">
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 16px 16px 0 0; text-align: center;">
                 <h1 style="color: white; margin: 0; font-size: 28px;">🏋️ GymPro Admin</h1>
                 ${isTestMode ? '<p style="color: rgba(255,255,255,0.8); margin: 10px 0 0 0; font-size: 12px;">TEST MODE</p>' : ''}
             </div>
             
             <div style="background: white; padding: 30px; border-radius: 0 0 16px 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
-                <h2 style="color: #333; margin-top: 0;">⚠️ Membership Expiring Soon</h2>
+                <h2 style="color: #333; margin-top: 0;">Member Expiry Alert 🔔</h2>
                 
                 <p style="color: #555; font-size: 16px; line-height: 1.6;">
-                    A member's subscription is about to expire. Here are the details:
+                    <strong>${userName}</strong> (${userEmail}) has a membership expiring in <strong>${timeRemaining} ${timeUnit}</strong>.
                 </p>
                 
-                <div style="background: #fff3f3; padding: 20px; border-radius: 12px; margin: 20px 0; border-left: 4px solid #f87171;">
+                <div style="background: #f8f9fa; padding: 20px; border-radius: 12px; margin: 20px 0;">
                     <table style="width: 100%; border-collapse: collapse;">
-                        <tr><td style="padding: 8px 0; color: #666; font-weight: bold;">Member Name:</td><td style="padding: 8px 0; text-align: right;">${userName}</td></tr>
-                        <tr><td style="padding: 8px 0; color: #666; font-weight: bold;">Email:</td><td style="padding: 8px 0; text-align: right;">${userEmail}</td></tr>
-                        <tr><td style="padding: 8px 0; color: #666; font-weight: bold;">Plan:</td><td style="padding: 8px 0; text-align: right;">${membership.plan_type}</td></tr>
-                        <tr><td style="padding: 8px 0; color: #666; font-weight: bold;">Expiry Date:</td><td style="padding: 8px 0; text-align: right;">${membership.end_date}</td></tr>
-                        <tr><td style="padding: 8px 0; color: #666; font-weight: bold;">Time Remaining:</td><td style="padding: 8px 0; text-align: right; color: #f87171; font-weight: bold;">${timeRemaining} ${timeUnit}</td></tr>
+                        <tr><td style="padding: 8px 0; color: #666;">Member:</td><td style="padding: 8px 0; text-align: right; font-weight: bold;">${userName}</td></tr>
+                        <tr><td style="padding: 8px 0; color: #666;">Email:</td><td style="padding: 8px 0; text-align: right; font-weight: bold;">${userEmail}</td></tr>
+                        <tr><td style="padding: 8px 0; color: #666;">Plan:</td><td style="padding: 8px 0; text-align: right; font-weight: bold;">${membership.plan_type}</td></tr>
+                        <tr><td style="padding: 8px 0; color: #666;">Expiry:</td><td style="padding: 8px 0; text-align: right; font-weight: bold;">${membership.end_date}</td></tr>
                     </table>
                 </div>
-                
-                <p style="color: #555; font-size: 16px;">Consider reaching out to the member to discuss renewal options.</p>
             </div>
-            
-            <p style="text-align: center; color: #999; font-size: 12px; margin-top: 20px;">
-                GymPro Admin Notification System
-            </p>
         </div>
     </body>
     </html>
     `;
 
     try {
-        await emailTransporter.sendMail({
-            from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+        await sgMail.send({
             to: adminEmail,
-            subject: subject,
+            from: process.env.EMAIL_FROM || 'noreply@gympro.com',
+            subject: `🔔 Member Expiry: ${userName} - ${timeRemaining} ${timeUnit}`,
             html: htmlContent
         });
-        console.log(`📧 [ADMIN] Notification sent about ${userName}`);
+        console.log(`📧 [ADMIN] Notification sent for ${userName}`);
         return true;
     } catch (error) {
         console.error(`❌ Failed to send admin notification:`, error.message);
@@ -166,15 +143,33 @@ async function sendAdminNotificationEmail(adminEmail, userName, userEmail, membe
 
 // Send membership expired email
 async function sendExpiredEmail(userEmail, userName, membership) {
-    const emailTransporter = getTransporter();
-    if (!emailTransporter) return false;
+    if (!initializeEmail()) return false;
+
+    const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+    <head><meta charset="UTF-8"></head>
+    <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Arial, sans-serif;">
+        <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+            <div style="background: #e53e3e; padding: 30px; border-radius: 16px 16px 0 0; text-align: center;">
+                <h1 style="color: white; margin: 0;">🏋️ GymPro</h1>
+            </div>
+            <div style="background: white; padding: 30px; border-radius: 0 0 16px 16px;">
+                <h2>Hello ${userName}!</h2>
+                <p>Your <strong>${membership.plan_type}</strong> membership has <strong style="color: #e53e3e;">expired</strong>.</p>
+                <p>Please renew your membership to continue accessing our gym facilities.</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    `;
 
     try {
-        await emailTransporter.sendMail({
-            from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+        await sgMail.send({
             to: userEmail,
+            from: process.env.EMAIL_FROM || 'noreply@gympro.com',
             subject: '❌ Your Gym Membership Has Expired',
-            html: `<p>Hello ${userName}, your ${membership.plan_type} membership has expired. Please renew to continue.</p>`
+            html: htmlContent
         });
         console.log(`📧 Expiry email sent to ${userName} (${userEmail})`);
         return true;
@@ -186,9 +181,7 @@ async function sendExpiredEmail(userEmail, userName, membership) {
 
 // Send registration OTP email
 async function sendRegistrationOTPEmail(email, name, otp) {
-    const emailTransporter = getTransporter();
-    
-    if (!emailTransporter) {
+    if (!initializeEmail()) {
         console.log('⚠️ Email not configured - skipping OTP email');
         return false;
     }
@@ -229,9 +222,9 @@ async function sendRegistrationOTPEmail(email, name, otp) {
     `;
 
     try {
-        await emailTransporter.sendMail({
-            from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+        await sgMail.send({
             to: email,
+            from: process.env.EMAIL_FROM || 'noreply@gympro.com',
             subject: '🔐 GymPro - Verify Your Email',
             html: htmlContent
         });
@@ -243,4 +236,4 @@ async function sendRegistrationOTPEmail(email, name, otp) {
     }
 }
 
-module.exports = { sendExpiryEmail, sendAdminNotificationEmail, sendExpiredEmail, sendRegistrationOTPEmail, getTransporter };
+module.exports = { sendExpiryEmail, sendAdminNotificationEmail, sendExpiredEmail, sendRegistrationOTPEmail, initializeEmail };
